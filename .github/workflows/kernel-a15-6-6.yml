@@ -8,12 +8,13 @@ on:
   workflow_dispatch:
     inputs:
       haotian_lto:
-        description: "haotian 6.6.118 LTO 对照（auto 运行常规版本矩阵）"
+        description: "haotian 6.6.118 对照（auto 常规矩阵，none-erofs 关闭 LTO 并应用 OEM 余量）"
         type: choice
         options:
           - auto
           - none
           - thin
+          - none-erofs
         default: auto
       kernelsu_variant:
         description: "KernelSU 变体"
@@ -209,7 +210,7 @@ on:
 
 jobs:
   build-kernels-a15-6-6:
-    if: inputs.haotian_lto != 'none' && inputs.haotian_lto != 'thin'
+    if: ${{ !inputs.haotian_lto || inputs.haotian_lto == 'auto' }}
     name: "6.6.${{ matrix.sub_level }}-${{ matrix.os_patch_level }}"
     strategy:
       fail-fast: false
@@ -250,7 +251,8 @@ jobs:
       kernel_version: "6.6"
       sub_level: ${{ matrix.sub_level }}
       os_patch_level: ${{ matrix.os_patch_level }}
-      kleaf_lto: ${{ inputs.haotian_lto || 'auto' }}
+      kleaf_lto: ${{ inputs.haotian_lto == 'none-erofs' && 'none' || inputs.haotian_lto || 'auto' }}
+      erofs_lz4_oem_margin: ${{ inputs.haotian_lto == 'none-erofs' }}
       ksu_variant: ${{ inputs.kernelsu_variant }}
       ksu_branch: ${{ inputs.kernelsu_branch }}
       custom_ref: ${{ inputs.custom_ref || '' }}
@@ -271,10 +273,10 @@ jobs:
       kpm_password: ${{ inputs.kpm_password || '' }}
       custom_external_modules: ${{ inputs.custom_external_modules || '' }}
       custom_kernel_options: ${{ inputs.custom_kernel_options || '' }}
-      upload_aux_artifacts: ${{ inputs.haotian_lto == 'none' || inputs.haotian_lto == 'thin' }}
+      upload_aux_artifacts: ${{ inputs.haotian_lto != '' && inputs.haotian_lto != 'auto' }}
 
   build-haotian-lto:
-    if: inputs.haotian_lto == 'none' || inputs.haotian_lto == 'thin'
+    if: inputs.haotian_lto != '' && inputs.haotian_lto != 'auto'
     name: "haotian 6.6.118-2026-01 / LTO ${{ inputs.haotian_lto }}"
     strategy:
       matrix:
@@ -287,7 +289,7 @@ jobs:
 
   # 仅在直接触发时运行，从 main.yml 调用时跳过
   get-ksu-manager:
-    if: ${{ !inputs.called_from_main && inputs.haotian_lto != 'none' && inputs.haotian_lto != 'thin' }}
+    if: ${{ !inputs.called_from_main && (!inputs.haotian_lto || inputs.haotian_lto == 'auto') }}
     uses: ./.github/workflows/get-manager.yml
     secrets: inherit
     with:

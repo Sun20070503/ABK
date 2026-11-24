@@ -1,0 +1,47 @@
+diff --git a/fs/erofs/decompressor.c b/fs/erofs/decompressor.c
+index c6fa905..2d36d72 100644
+--- a/fs/erofs/decompressor.c
++++ b/fs/erofs/decompressor.c
+@@ -5,6 +5,8 @@
+  */
+ #include "compress.h"
++#include <linux/init.h>
+ #include <linux/module.h>
+ #include <linux/lz4.h>
++#include <linux/string.h>
+ #include <trace/hooks/lz4_decompress.h>
+ 
+@@ -18,4 +20,26 @@
+ #endif
+ 
++static bool z_erofs_lz4asm_supported;
++
++static unsigned int z_erofs_lz4_inplace_margin(unsigned int inputsize)
++{
++	/* Use the larger base margin when the bootloader enables LZ4 assembly. */
++	if (z_erofs_lz4asm_supported)
++		return (inputsize >> 8) + 65;
++	return LZ4_DECOMPRESS_INPLACE_MARGIN(inputsize);
++}
++
++#ifndef MODULE
++static int __init z_erofs_lz4asm_setup(char *value)
++{
++	if (value && !strcmp(value, "1"))
++		z_erofs_lz4asm_supported = true;
++	pr_info("erofs: lz4 decompress implace margin: %u\n",
++		z_erofs_lz4_inplace_margin(0));
++	return 0;
++}
++early_param("lz4asm.support", z_erofs_lz4asm_setup);
++#endif
++
+ struct z_erofs_lz4_decompress_ctx {
+ 	struct z_erofs_decompress_req *rq;
+@@ -136,5 +160,5 @@ static void *z_erofs_lz4_handle_overlap(struct z_erofs_lz4_decompress_ctx *ctx,
+ 		omargin = PAGE_ALIGN(ctx->oend) - ctx->oend;
+ 		if (rq->partial_decoding || !may_inplace ||
+-		    omargin < LZ4_DECOMPRESS_INPLACE_MARGIN(rq->inputsize))
++		    omargin < z_erofs_lz4_inplace_margin(rq->inputsize))
+ 			goto docopy;
+ 

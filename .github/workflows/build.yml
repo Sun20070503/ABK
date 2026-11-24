@@ -171,6 +171,10 @@ on:
         required: false
         type: string
         default: "auto"
+      erofs_lz4_oem_margin:
+        required: false
+        type: boolean
+        default: false
       upload_aux_artifacts:
         required: false
         type: boolean
@@ -6648,6 +6652,11 @@ jobs:
           fi
 
           echo "ABK Control 管理器桥接校验通过。"
+
+      - name: 应用 haotian OEM EROFS LZ4 余量补丁
+        if: inputs.erofs_lz4_oem_margin
+        working-directory: ${{ env.KERNEL_ROOT }}/common
+        run: git apply --verbose "$GITHUB_WORKSPACE/.github/patches/haotian-erofs-lz4-margin.patch"
 
       - name: 编译内核
         env:

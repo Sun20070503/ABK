@@ -8,13 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       haotian_lto:
-        description: "haotian 6.6.118 对照（auto 常规矩阵，none-erofs 关闭 LTO 并应用 OEM 余量）"
+        description: "haotian 6.6.118 对照（auto 常规矩阵，nova-erofs 使用 Nova 和 OEM 余量，关闭 LTO/SUSFS/KPM）"
         type: choice
         options:
           - auto
           - none
           - thin
           - none-erofs
+          - nova-erofs
         default: auto
       kernelsu_variant:
         description: "KernelSU 变体"
@@ -251,11 +252,11 @@ jobs:
       kernel_version: "6.6"
       sub_level: ${{ matrix.sub_level }}
       os_patch_level: ${{ matrix.os_patch_level }}
-      kleaf_lto: ${{ inputs.haotian_lto == 'none-erofs' && 'none' || inputs.haotian_lto || 'auto' }}
-      erofs_lz4_oem_margin: ${{ inputs.haotian_lto == 'none-erofs' }}
-      ksu_variant: ${{ inputs.kernelsu_variant }}
-      ksu_branch: ${{ inputs.kernelsu_branch }}
-      custom_ref: ${{ inputs.custom_ref || '' }}
+      kleaf_lto: ${{ (inputs.haotian_lto == 'none-erofs' || inputs.haotian_lto == 'nova-erofs') && 'none' || inputs.haotian_lto || 'auto' }}
+      erofs_lz4_oem_margin: ${{ inputs.haotian_lto == 'none-erofs' || inputs.haotian_lto == 'nova-erofs' }}
+      ksu_variant: ${{ inputs.haotian_lto == 'nova-erofs' && 'SukiSU-Nova' || inputs.kernelsu_variant }}
+      ksu_branch: ${{ inputs.haotian_lto == 'nova-erofs' && 'v3.0.0' || inputs.kernelsu_branch }}
+      custom_ref: ${{ inputs.haotian_lto != 'nova-erofs' && inputs.custom_ref || '' }}
       version: ${{ inputs.version || '' }}
       build_time: ${{ inputs.build_time || '' }}
       use_zram: ${{ inputs.use_zram }}
@@ -263,10 +264,10 @@ jobs:
       use_ddk: ${{ inputs.use_ddk }}
       use_ntsync: ${{ inputs.use_ntsync || false }}
       use_networking: ${{ inputs.use_networking || false }}
-      use_kpm: ${{ inputs.use_kpm }}
+      use_kpm: ${{ inputs.haotian_lto != 'nova-erofs' && inputs.use_kpm }}
       use_rekernel: ${{ inputs.use_rekernel || false }}
       supp_op: ${{ inputs.supp_op || false }}
-      enable_susfs: ${{ !inputs.cancel_susfs }}
+      enable_susfs: ${{ inputs.haotian_lto != 'nova-erofs' && !inputs.cancel_susfs }}
       virtualization_support: ${{ inputs.virtualization_support || 'off' }}
       zram_full_algo: ${{ inputs.zram_full_algo || false }}
       zram_extra_algos: ${{ inputs.zram_extra_algos || '' }}

@@ -190,6 +190,11 @@ jobs:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
+      SUKISU_NOVA_REPO: SukiSU-Nova/SukiSU-Nova
+      SUKISU_NOVA_TAG: v3.0.0
+      SUKISU_NOVA_COMMIT: c60f21b9e00e35e898f8d21e0612465b76b9beec
+      SUKISU_NOVA_VERSION_CODE: "35000"
+      SUKISU_NOVA_MANAGER_SHA256: 1202adb835a64d8b3df703da7884a2966f8728c131cffb29fb5f48d31d81ac85
 
     steps:
       - name: 构建信息摘要
@@ -537,7 +542,13 @@ jobs:
           CUSTOM_REF: ${{ inputs.custom_ref }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: bash .github/scripts/resolve-ksu-ref.sh
+        run: |
+          if [ "$KSU_VARIANT" = "SukiSU-Nova" ]; then
+            printf 'BRANCH=%s\n' "$SUKISU_NOVA_COMMIT" >> "$GITHUB_ENV"
+            echo "SukiSU Nova $SUKISU_NOVA_TAG: $SUKISU_NOVA_COMMIT"
+          else
+            bash .github/scripts/resolve-ksu-ref.sh
+          fi
 
       - name: 准备 ABK 管理器证书元数据
         shell: bash
@@ -1453,16 +1464,21 @@ jobs:
               fi
               cd ..
               ;;
-            "SukiSU")
-              echo "添加 SukiSU..."
+            "SukiSU"|"SukiSU-Nova")
+              ksu_variant="${{ inputs.ksu_variant }}"
+              echo "添加 $ksu_variant..."
               requested_ref="$BRANCH"
               if [ -z "$requested_ref" ]; then
                 echo "::error::SukiSU 请求 ref 为空"
                 exit 1
               fi
 
+              setup_url="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh"
+              if [ "$ksu_variant" = "SukiSU-Nova" ]; then
+                setup_url="https://raw.githubusercontent.com/$SUKISU_NOVA_REPO/$requested_ref/kernel/setup.sh"
+              fi
               setup_script="$(mktemp)"
-              curl -fLSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" -o "$setup_script"
+              curl -fLSs "$setup_url" -o "$setup_script"
               if grep -qF 'git checkout "$1" && echo "[-] Checked out $1." || echo "[-] Checkout default branch"' "$setup_script"; then
                 sed -i '/git checkout "\$1" && echo /c\        git checkout "$1" && echo "[-] Checked out $1."' "$setup_script"
               fi
@@ -1484,6 +1500,15 @@ jobs:
               if [ "$requested_head" != "$resolved_head" ]; then
                 echo "::error::SukiSU setup 静默回退或检出错误: 请求 $requested_head，实际 $resolved_head"
                 exit 1
+              fi
+              if [ "$ksu_variant" = "SukiSU-Nova" ]; then
+                # The upstream Kbuild otherwise derives version metadata from the moving main branch.
+                sed -i -E \
+                  -e 's/^GITHUB_COMMITS[[:space:]]*:=.*/GITHUB_COMMITS :=/' \
+                  -e 's/^KSU_GITHUB_VER[[:space:]]*:=.*/KSU_GITHUB_VER :=/' \
+                  -e "s/^KSU_VERSION[[:space:]]*:=.*/KSU_VERSION := $SUKISU_NOVA_VERSION_CODE/" \
+                  -e "s/^VERSION_TAG[[:space:]]*:=.*/VERSION_TAG := ${SUKISU_NOVA_TAG#v}/" \
+                  KernelSU/kernel/Kbuild
               fi
               ;;
             "BakaSU")
@@ -6935,6 +6960,11 @@ jobs:
                   echo "::error::实际编译配置未应用 --lto=$LTO_MODE"
                   exit 1
                 fi
+                if [ "${{ inputs.ksu_variant }}" = "SukiSU-Nova" ]; then
+                  grep -Fx 'CONFIG_KSU=y' "$BUILD_CONFIG_FILE"
+                  grep -Fx 'CONFIG_KPROBES=y' "$BUILD_CONFIG_FILE"
+                  grep -Fx 'CONFIG_EXT4_FS=y' "$BUILD_CONFIG_FILE"
+                fi
                 mkdir -p "$GITHUB_WORKSPACE/kernel-lto"
                 cp "$BUILD_CONFIG_FILE" "$GITHUB_WORKSPACE/kernel-lto/.config"
                 git -C common rev-parse HEAD > "$GITHUB_WORKSPACE/kernel-lto/common-commit.txt"
@@ -7152,6 +7182,24 @@ jobs:
           name: ${{ inputs.ksu_variant }}_kernel-${{ env.CONFIG }}-lto-${{ inputs.kleaf_lto }}-config
           path: kernel-lto/
           include-hidden-files: true
+          if-no-files-found: error
+
+      - name: 下载配套的 SukiSU Nova 管理器
+        if: inputs.ksu_variant == 'SukiSU-Nova'
+        run: |
+          set -euo pipefail
+          apk="SukiSU_Nova_${SUKISU_NOVA_TAG}_${SUKISU_NOVA_VERSION_CODE}-arm64-v8a-release.apk"
+          mkdir -p nova-manager
+          curl -fLSs --retry 3 "https://github.com/$SUKISU_NOVA_REPO/releases/download/$SUKISU_NOVA_TAG/$apk" \
+            -o "nova-manager/$apk"
+          printf '%s  %s\n' "$SUKISU_NOVA_MANAGER_SHA256" "nova-manager/$apk" | sha256sum -c -
+
+      - name: 上传 SukiSU Nova 管理器
+        if: inputs.ksu_variant == 'SukiSU-Nova'
+        uses: actions/upload-artifact@v6
+        with:
+          name: SukiSU-Nova-manager-arm64
+          path: nova-manager/*.apk
           if-no-files-found: error
 
       - name: 上传补丁冲突文件

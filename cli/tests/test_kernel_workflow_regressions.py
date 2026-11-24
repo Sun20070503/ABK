@@ -29,12 +29,13 @@ class KernelWorkflowRegressionTests(unittest.TestCase):
 
     def test_sukisu_setup_accepts_resolved_bare_sha(self):
         block = self._step_run_block("添加 KernelSU")
-        case = block.split('"SukiSU")', 1)[1].split('"BakaSU")', 1)[0]
+        case = block.split('"SukiSU"|"SukiSU-Nova")', 1)[1].split('"BakaSU")', 1)[0]
 
         self.assertIn('requested_ref="$BRANCH"', case)
         self.assertNotIn('${BRANCH#-s }', case)
         self.assertIn('bash "$setup_script" "$requested_ref"', case)
         self.assertIn('requested_head="$(git -C KernelSU rev-parse', case)
+        self.assertIn('$SUKISU_NOVA_REPO/$requested_ref/kernel/setup.sh', case)
 
     def test_development_refs_are_reachable_successful_main_builds(self):
         expected = {

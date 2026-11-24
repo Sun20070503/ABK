@@ -7,6 +7,14 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
+      haotian_lto:
+        description: "haotian 6.6.118 LTO 对照（auto 运行常规版本矩阵）"
+        type: choice
+        options:
+          - auto
+          - none
+          - thin
+        default: auto
       kernelsu_variant:
         description: "KernelSU 变体"
         required: true
@@ -159,7 +167,6 @@ on:
       use_kpm:
         required: true
         type: boolean
-        default: false
       use_rekernel:
         required: false
         type: boolean
@@ -202,6 +209,7 @@ on:
 
 jobs:
   build-kernels-a15-6-6:
+    if: inputs.haotian_lto != 'none' && inputs.haotian_lto != 'thin'
     name: "6.6.${{ matrix.sub_level }}-${{ matrix.os_patch_level }}"
     strategy:
       fail-fast: false
@@ -237,11 +245,12 @@ jobs:
             os_patch_level: "lts"
     uses: ./.github/workflows/build.yml
     secrets: inherit
-    with:
+    with: &kernel_inputs
       android_version: "android15"
       kernel_version: "6.6"
       sub_level: ${{ matrix.sub_level }}
       os_patch_level: ${{ matrix.os_patch_level }}
+      kleaf_lto: ${{ inputs.haotian_lto || 'auto' }}
       ksu_variant: ${{ inputs.kernelsu_variant }}
       ksu_branch: ${{ inputs.kernelsu_branch }}
       custom_ref: ${{ inputs.custom_ref || '' }}
@@ -262,11 +271,23 @@ jobs:
       kpm_password: ${{ inputs.kpm_password || '' }}
       custom_external_modules: ${{ inputs.custom_external_modules || '' }}
       custom_kernel_options: ${{ inputs.custom_kernel_options || '' }}
-      upload_aux_artifacts: false
+      upload_aux_artifacts: ${{ inputs.haotian_lto == 'none' || inputs.haotian_lto == 'thin' }}
+
+  build-haotian-lto:
+    if: inputs.haotian_lto == 'none' || inputs.haotian_lto == 'thin'
+    name: "haotian 6.6.118-2026-01 / LTO ${{ inputs.haotian_lto }}"
+    strategy:
+      matrix:
+        include:
+          - sub_level: "118"
+            os_patch_level: "2026-01"
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with: *kernel_inputs
 
   # 仅在直接触发时运行，从 main.yml 调用时跳过
   get-ksu-manager:
-    if: ${{ !inputs.called_from_main }}
+    if: ${{ !inputs.called_from_main && inputs.haotian_lto != 'none' && inputs.haotian_lto != 'thin' }}
     uses: ./.github/workflows/get-manager.yml
     secrets: inherit
     with:

@@ -678,7 +678,6 @@ jobs:
 
       - name: 配置 ccache
         run: |
-          mkdir -p ~/.cache/bazel
           ccache --version
           ccache --max-size=2G
           ccache --set-config=compression=true
@@ -6877,6 +6876,7 @@ jobs:
             sed -i '/MODULES_ORDER=android\/gki_aarch64_modules/d' ./common/build.config.gki.aarch64
             sed -i '/KMI_SYMBOL_LIST_STRICT_MODE/d' ./common/build.config.gki.aarch64
 
+            KLEAF_LTO="${KLEAF_LTO:-auto}"
             if [ -f "build/build.sh" ]; then
               if [ "$KLEAF_LTO" != "auto" ]; then
                 echo "::error::显式 LTO 模式仅支持 Kleaf 构建"
@@ -6913,7 +6913,9 @@ jobs:
                   exit 1
                   ;;
               esac
-              tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast "--lto=$LTO_MODE" $FRAG_FLAG "${TARGETS[@]}" || exit 1
+              BAZEL_DISK_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/bazel-disk"
+              mkdir -p "$BAZEL_DISK_CACHE" || exit 1
+              tools/bazel build --disk_cache="$BAZEL_DISK_CACHE" --config=fast "--lto=$LTO_MODE" $FRAG_FLAG "${TARGETS[@]}" || exit 1
               if [ "$KLEAF_LTO" != "auto" ]; then
                 BUILD_CONFIG_FILE="bazel-bin/common/kernel_aarch64_config/out_dir/.config"
                 case "$LTO_MODE" in
